@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<calendars setname="Sample Calendar">
+	<calendar path="http://software.jonandnic.com/webCal/Sample.ics"
+			  name="Sample"
+			  color="#DC143C"
+			  show="true"/>
+</calendars>

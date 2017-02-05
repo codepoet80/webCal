@@ -1,0 +1,351 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<!--/Creative Commons License-->
+<!-- 
+<rdf:RDF xmlns="http://web.resource.org/cc/" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+    <Work rdf:about="">
+        <license rdf:resource="http://creativecommons.org/licenses/by-sa/2.5/" />
+        <dc:title>webCal</dc:title>
+        <dc:description>Web based calendar tool for displaying vCal (iCal, Sunbird) calendars in a browser</dc:description>
+        <dc:creator><Agent><dc:title>Jonathan Wise</dc:title></Agent></dc:creator>
+        <dc:type rdf:resource="http://purl.org/dc/dcmitype/InteractiveResource" />
+        <dc:source rdf:resource="http://software.jonandnic.com/" />
+    </Work>
+    <License rdf:about="http://creativecommons.org/licenses/by-sa/2.5/">
+        <permits rdf:resource="http://web.resource.org/cc/Reproduction"/>
+        <permits rdf:resource="http://web.resource.org/cc/Distribution"/>
+        <requires rdf:resource="http://web.resource.org/cc/Notice"/>
+        <requires rdf:resource="http://web.resource.org/cc/Attribution"/>
+        <permits rdf:resource="http://web.resource.org/cc/DerivativeWorks"/>
+        <requires rdf:resource="http://web.resource.org/cc/ShareAlike"/>
+    </License>
+</rdf:RDF>
+ -->
+<html xmlns="http://www.w3.org/1999/xhtml" >
+<head>
+    <title>webCal v1.0</title>
+    <LINK REL="shortcut icon" HREF="webCal.ico" TYPE="image/x-icon">
+    <style>
+        body            { font-family: verdana, arial, helvetica; font-size: 11px; }
+        td              { font-family: verdana, arial, helvetica; font-size: 11px; }
+        li              { list-style-type: disc; margin-left: 6 }
+        a               { color: #464646; text-decoration: none }
+        a:hover         { color: #000; text-decoration: none }
+        #appTitle       { padding-left:2px; padding-top: 3px; padding-bottom: 4px; font-weight:bold; font-size: 14px}
+        #appTools       { text-align: right; padding-right: 5px; font-weight:bold; }
+        #appChooser     { text-align: right; padding-right: 5px; }
+        #calCell        { }
+        #calendarList   {  padding-left:5px; height:30px; padding-bottom: 5px; font-weight:bold; }
+        #eventsTitle    { font-weight:bold; font-size: 11px; padding: 5px; background-image: url(title-back.gif);background-color: #EBEBEB; border-top: 1px solid #b4b4b4; border-left: 1px solid #b4b4b4; border-bottom: 1px solid #b4b4b4; border-right: 1px solid gray; text-align: center; }
+        #eventsList     { padding: 5px; background-color: #EBEBEB; background-image: url(events-back.gif);background-repeat: repeat-x; background-attachment: fixed; background-position: left bottom; }
+    </style>
+    <script language="javascript" src="../../jsobjects/jsUI-Global/common.js"></script>
+	<script language="javascript" src="../../jsobjects/jsUI-Global/uiCommon.js"></script>
+	<script language="javascript" src="../../jsobjects/jsDA-wsBind/component.js"></script>
+	<script language="javascript" src="../../jsobjects/jsUI-Calendar/component.js"></script>
+	<script language="javascript" src="webCalService.js"></script>
+    <script>
+    var myCal = new Object();
+    var myWS = new Object();
+    var calendarList = new Array();
+    var loadTime = new Date();
+    var sessionToken = "";
+    var reloadTimer = setTimeout("refreshPage()", 3600000);
+	function initPage()
+	{
+		myCal = calendarNew("myCal", "default", "calCell", null);
+		var dateObj = new Date();
+		myCal.setDate(dateObj);
+		myCal.setStatus("working", "Connecting to service...");
+		myCal.eventClicked = eventClicked;
+		myCal.dateClicked = dateClicked;
+		myCal.dateChanged = changeMonth;
+		myWS = wsbindNew("myWS", "http://" + document.location.hostname + "/webcal/webcalservice.asmx", null);
+		myCal.setStatus("date");
+		getCalendarList();
+	}
+	
+	function refreshPage()
+	{
+	    myCal.setStatus("working", "Refreshing calendar...");
+	    window.status = "Refreshing calendar...";
+        var cacheTime = new Date();
+        var hours = cacheTime.getHours() * 1;
+        var hours = (hours - 1);
+        if (hours > loadTime.getHours() || cacheTime.getDate() != loadTime.getDate())
+        {
+            clearTimeout(reloadTimer);
+            calendarPos = 0;
+            loadedMonths = new Array();
+            getCalendarList();
+            setTimeout("refreshPage", 3600000);
+        }
+        else
+            myCal.redraw();
+        window.status = "webCal Ready";
+	}
+	
+	var appCalList = new Array()
+	function getCalendarList()
+	{
+	    appCalList = getCalendars();
+	    document.getElementById("calendarList").innerHTML = "Calendars: ";
+	    for (var c=0;c<appCalList.length;c++)
+	    {
+	        document.getElementById("calendarList").innerHTML += "<input type='checkbox' onclick='filterCalendar(this)' checked id='chk_" + appCalList[c].name + "'>";
+	        document.getElementById("calendarList").innerHTML += "<span style='color:" + appCalList[c].color + "'>" + appCalList[c].name + "</span>&nbsp;";
+	    }
+	    calendarLoaded();
+	}
+	
+	function filterCalendar(objCheck)
+	{
+	    myCal.removeEvent();
+	    myCal.setStatus("working", "Populating calendar...");
+	    var currCal = replace(objCheck.id, "chk_", "");
+	    for (var l=0;l<appCalList.length;l++)
+        {
+            if (currCal == appCalList[l].name)
+            {
+                appCalList[l].show = objCheck.checked;
+            }
+        }
+        drawAppEvents();
+	}
+	
+	function changeMonth()
+	{
+	    callForEvents(null, sessionToken);
+	}
+	
+	function drawAppEvents()
+	{
+	    //myCal.removeEvent();
+	    window.status = "Populating events";
+		for (var e=0;e<appEventList.length;e++)
+		{
+		    var currColor = "black";
+		    var showCal = true;
+            for (var l=0;l<appCalList.length;l++)
+            {
+                if (appEventList[e].calendar == appCalList[l].name)
+                {
+                    currColor = appCalList[l].color;
+                    showCal = appCalList[l].show;
+                }
+            }
+            if (showCal)
+            {
+                var eventTime = makeTime(appEventList[e].startDate);
+		        myCal.addEvent(appEventList[e].uid, appEventList[e].startDate, appEventList[e].endDate, null, eventTime + " - " + appEventList[e].summary, appEventList[e].summary, currColor, appEventList[e].calendar);
+		    }
+		    if (appEventList.length > 10 && e > 10)
+		        window.status = "Populating event " + e + " of " + (appEventList.length-1);
+		}
+		window.status = "webCal Ready";
+		dateClicked(new Date());
+		myCal.setStatus("date");
+	}
+	
+	function eventClicked(obj)
+	{
+	   // alert (obj);
+	   // alert (serializeObject(obj));
+	}
+	
+	function dateClicked(clickedDate)
+	{
+	    document.getElementById("eventsList").innerHTML = "";
+	    document.getElementById("eventsTitle").innerHTML = CalendarPvtGetDayName(clickedDate.getDay()) + ", " + CalendarPvtGetMonthInitial(clickedDate.getMonth()) + " " + clickedDate.getDate() + ", " + clickedDate.getFullYear();
+	    for (var e=0;e<appEventList.length;e++)
+		{
+		    if (appEventList[e].startDate.getFullYear() == clickedDate.getFullYear() && appEventList[e].startDate.getMonth() == clickedDate.getMonth() && appEventList[e].startDate.getDate() == clickedDate.getDate())
+		    {
+		        var currColor = "black";
+		        var showCal = true;
+                for (var l=0;l<appCalList.length;l++)
+                {
+                    if (appEventList[e].calendar == appCalList[l].name)
+                    {
+                        currColor = appCalList[l].color;
+                        showCal = appCalList[l].show;
+                    }
+                }
+                if (showCal)
+                {
+                    document.getElementById("eventsList").innerHTML += "<li style='color:" + currColor + "'>" + appEventList[e].summary + "<br>";
+                    if (appEventList[e].endDate != "none")
+                        document.getElementById("eventsList").innerHTML += "&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;" +  makeTime(appEventList[e].startDate) + " - " + makeTime(appEventList[e].endDate);
+                    else
+                        document.getElementById("eventsList").innerHTML += "&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;" +  makeTime(appEventList[e].startDate);
+		            document.getElementById("eventsList").innerHTML += "<br>&nbsp;";
+		        }
+		    }
+		}
+		document.getElementById("eventsList").innerHTML += "&nbsp;";
+	}
+	
+	function makeTime(objDate)
+	{
+	    var mTime = "";
+	    var hours = (objDate.getHours() * 1)+1;
+	    var minutes = objDate.getMinutes() * 1;
+	    var ap = " am";
+	    if (hours > 12)
+	    {
+	        hours = hours - 12;
+	        ap = " pm";
+	    }
+	    if (minutes < 10)
+	    {
+	        minutes = minutes + "";
+	        minutes = "0" + minutes
+	    }
+	    return hours + ":" + minutes + ap;
+	}
+	
+	function getCalendars()
+	{
+	    var loadCalList = new Array();
+	    var queryObj = getQueryString();
+	    if (queryObj.calendar != null && queryObj.calendar != undefined || queryObj.calendar == "")
+	    {
+	        var ccList = queryObj.calendar.split("|");
+	        for (var c=0;c<ccList.length;c++)
+	        {
+	            var newCal = new Object();
+	            newCal.path = ccList[c];
+	            var nameParts = newCal.path.split("/");
+	            nameParts = nameParts[nameParts.length-1];
+	            nameParts = nameParts.split(".");
+	            nameParts = nameParts[0];
+	            newCal.name = nameParts;
+	            newCal.color = pickColor(c);
+	            newCal.show = true;
+	            loadCalList[loadCalList.length] = newCal;
+	        }
+	        document.getElementById("webCalSets").options[0].text = "Custom Calendar";
+	    }
+	    else
+	    {
+	        var profilePath = "webCalConfig.xml";
+	        if(queryObj.profile != null && queryObj.profile != undefined || queryObj.profile == "")
+	            profilePath = queryObj.profile;
+	        var xmlDoc;
+	        var ccList;
+	        var ccSetName;
+	        if (browser == "IE")
+	        {
+	    	    var xmlhttp = new ActiveXObject("Msxml2.XMLHTTP");
+			    xmlhttp.Open("GET", profilePath, false);
+			    xmlhttp.send();
+			    xmlDoc = new ActiveXObject("MSXML2.DOMDocument");
+	            xmlDoc.async = false;
+	            xmlDoc.loadXML(xmlhttp.responseText)
+	            ccSetName = xmlDoc.selectSingleNode("//calendars").attributes.getNamedItem("setname").value;
+	            ccList = xmlDoc.selectNodes("//calendar");
+	        }
+	        else
+	        {
+	    	    var xmlhttp = new XMLHttpRequest();
+	            xmlhttp.open ("GET", profilePath, false);
+	            xmlhttp.send(null);
+	            xmlDoc = xmlParser.parseFromString(xmlhttp.responseText, 'text/xml');
+	            ccSetName = xmlDoc.getElementsByTagName("calendars");
+	            ccSetName = ccSetName[0].attributes.getNamedItem("setname").value;
+	            ccList = xmlDoc.getElementsByTagName("calendar");
+	        }
+	        for (var c=0;c<ccList.length;c++)
+	        {
+	            var newCal = new Object();
+	            newCal.path = ccList[c].attributes.getNamedItem("path").value;
+	            newCal.name = ccList[c].attributes.getNamedItem("name").value;
+	            if (ccList[c].attributes.getNamedItem("color").value != null && ccList[c].attributes.getNamedItem("color").value != "")
+	                newCal.color = ccList[c].attributes.getNamedItem("color").value;
+	            else
+	                newCal.color = pickColor[c];
+	            newCal.show = ccList[c].attributes.getNamedItem("show").value;
+	            loadCalList[loadCalList.length] = newCal;
+	        }
+	        if (ccList.length == 0)
+	        {
+	            //Load sample
+	            var newCal = new Object();
+	            newCal.path = "http://software.jonandnic.com/webCal/Sample.ics";
+	            newCal.name = "Sample";
+	            newCal.color = "#2C4581";
+	            newCal.show = true;
+	            loadCalList[0] = newCal;
+	        }
+	        document.getElementById("webCalSets").options[0].text = ccSetName;
+		}
+		return loadCalList;
+	}
+	
+	var rT;
+	function scaleCalendar()
+	{
+	    clearTimeout(rT);
+	    rT = setTimeout("window.status='Redrawing...';myCal.redraw();window.status='webCal Ready'", 400);
+	}
+	
+	function cleanupCache()
+	{
+	    myWS.cleanupCache(sessionToken, "");
+	}
+	
+	function pickColor(c)
+	{
+	    var colors = new Array();
+	    colors[0] = "#2C4581";
+	    colors[1] = "#006400";
+	    colors[2] = "#DC143C";
+	    colors[3] = "#FFA500";
+	    colors[4] = "#7B68EE";
+	    colors[5] = "#6A5ACD";
+	    colors[6] = "#40E0D0";
+	    if (c < colors.length)
+	        return colors[c];
+	    else
+	        return "blue";
+	}
+	</script>
+</head>
+<body onload="initPage()" onresize="scaleCalendar()" onunload="cleanupCache()" style="margin-top:0px;margin-bottom:0px;margin-left:0px;margin-right:0px">
+<table border="0" cellpadding="2" cellspacing="0" style="width:100%;height:100%">
+  <tr>
+    <td>
+        <table border="0" cellpadding="0" cellspacing="0" width="100%">
+            <tr>
+                <td id="appTitle">
+                    <img src="webCal.gif" border="0" align="absmiddle" /> webCal 1.0
+                </td>
+                <td id="appTools">
+                     <a href="javascript:refreshPage()">Refresh <img src="refresh.gif" border="0" align="absmiddle"/></a>
+                </td>
+            </tr>
+        </table>
+        
+    </td>
+    <td id="appChooser">
+        <select class="webCalInput" id="webCalSets">
+            <option value="default">Loading Calendars</option>
+        </select>
+    </td>
+  </tr>
+  <tr>
+    <td width="100%" id="calCell" style="height:100%;"></td>
+    <td id="calCell" style="width:200px; padding-bottom: 4px; padding-right: 5px; height:100%" valign="top">
+        <table style="width:200px;height:100%" cellpadding="0" cellspacing="0">
+            <tr><td id="eventsTitle" style="width:100%;">Events</td></tr>
+            <tr><td id="eventsList" style="border-left: 1px solid #C0C0C0; border-right: 1px solid gray; width:100%;height:100%" valign="top">
+            &nbsp;</td></tr>
+        </table>
+    </td>
+  </tr>
+  <tr>
+    <td width="100%" id="calendarList">Calendars: </td>
+    <td align="right"><a href="http://software.jonandnic.com" target="_blank"><img src="jsObjects-s.gif" border="0" align="absmiddle"/> Powered by jsObjects</a>&nbsp;&nbsp;</td>
+  </tr>
+</table>
+</body>
+</html>
